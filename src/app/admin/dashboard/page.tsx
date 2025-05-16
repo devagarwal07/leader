@@ -15,7 +15,7 @@ export default function AdminDashboardPage() {
   const { currentUser, loading: authLoading, isAdmin } = useAuth();
   const router = useRouter();
   const [requests, setRequests] = useState<PointRequest[]>([]);
-  const [isLoadingTable, setIsLoadingTable] = useState(true); 
+  const [isLoadingTable, setIsLoadingTable] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'rejected' | 'all'>("pending");
 
@@ -39,24 +39,31 @@ export default function AdminDashboardPage() {
   }, []);
 
   useEffect(() => {
+    // Wait for auth to resolve
     if (authLoading) {
-      return; 
+      console.log("[AdminDashboardPage Effect] Auth loading, returning.");
+      return;
     }
 
+    // If no user, redirect to login
     if (!currentUser) {
+      console.log("[AdminDashboardPage Effect] No current user, redirecting to login.");
       router.push('/login?redirect=/admin/dashboard');
       return;
     }
 
-    if (currentUser && !isAdmin) {
-      // Not an admin, redirect to home. The component will render "Access Denied" before redirect.
-      // The access denied card below also handles this visually if redirection is slow.
-      router.push('/'); 
+    // User exists, check if admin. If not, redirect to home.
+    // isAdmin is derived from currentUser.role in AuthContext
+    if (!isAdmin) {
+      console.log(`[AdminDashboardPage Effect] User is not admin (role: ${currentUser.role}), redirecting to home.`);
+      router.push('/');
       return;
     }
 
+    // User is admin, fetch requests for the current tab
     if (isAdmin) {
-        fetchRequests(activeTab === 'all' ? undefined : activeTab);
+      console.log("[AdminDashboardPage Effect] User is admin, fetching requests.");
+      fetchRequests(activeTab === 'all' ? undefined : activeTab);
     }
   }, [currentUser, authLoading, isAdmin, router, fetchRequests, activeTab]);
 
@@ -65,9 +72,9 @@ export default function AdminDashboardPage() {
     const tabValue = value as 'pending' | 'approved' | 'rejected' | 'all';
     setActiveTab(tabValue);
   };
-  
+
   const handleActionComplete = () => {
-    if (isAdmin) {
+    if (isAdmin) { // Re-check isAdmin in case of role changes, though unlikely here
         fetchRequests(activeTab === 'all' ? undefined : activeTab);
     }
   };
@@ -81,8 +88,9 @@ export default function AdminDashboardPage() {
     );
   }
 
-  // After authLoading is false, if user is not an admin (or not logged in at all)
-  if (!currentUser || !isAdmin) {
+  // After authLoading is false, determine content or "Access Denied"
+  if (!currentUser) {
+     // This state should ideally be caught by useEffect redirect, but good as a fallback display.
      return (
         <div className="container mx-auto py-8 flex justify-center">
             <Card className="w-full max-w-md shadow-lg">
@@ -92,10 +100,9 @@ export default function AdminDashboardPage() {
                     </CardTitle>
                 </CardHeader>
                 <CardContent>
-                    <p className="text-muted-foreground">You do not have permission to view this page. Please ensure you are logged in with an administrator account.</p>
+                    <p className="text-muted-foreground">You must be logged in to view this page.</p>
                     <p className="text-xs mt-2 text-muted-foreground">
-                      If you believe you are an admin, please ensure your user account in the database has the 'role' field correctly set to 'admin'.
-                      Check the browser's developer console for more detailed authentication logs from AuthContext.
+                      Please log in. If you continue to see this, check console logs from AuthContext.
                     </p>
                 </CardContent>
             </Card>
@@ -103,7 +110,29 @@ export default function AdminDashboardPage() {
     );
   }
 
-  // Render Admin Dashboard Content (if user is authenticated and is an admin)
+  // currentUser exists, now check their role for displaying content.
+  if (currentUser.role !== 'admin') {
+     return (
+        <div className="container mx-auto py-8 flex justify-center">
+            <Card className="w-full max-w-md shadow-lg">
+                <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-destructive">
+                        <AlertTriangle className="h-6 w-6"/> Access Denied
+                    </CardTitle>
+                </CardHeader>
+                <CardContent>
+                    <p className="text-muted-foreground">You do not have permission to view this page. Your role is: '{currentUser.role || "Not defined"}'.</p>
+                    <p className="text-xs mt-2 text-muted-foreground">
+                      Ensure your user account in Firestore has the 'role' field correctly set to 'admin'.
+                      Check the browser's developer console for detailed authentication logs from AuthContext.
+                    </p>
+                </CardContent>
+            </Card>
+        </div>
+    );
+  }
+
+  // Render Admin Dashboard Content (user is authenticated AND currentUser.role === 'admin')
   return (
     <div className="space-y-6">
       <Card className="shadow-lg">
@@ -119,7 +148,7 @@ export default function AdminDashboardPage() {
               <TabsTrigger value="rejected">Rejected</TabsTrigger>
               <TabsTrigger value="all">All</TabsTrigger>
             </TabsList>
-            
+
             {isLoadingTable ? (
                 <div className="flex justify-center items-center py-10">
                     <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -151,3 +180,4 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
+
