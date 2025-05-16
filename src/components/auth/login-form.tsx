@@ -57,8 +57,10 @@ export function LoginForm() {
           router.push(redirectUrl);
         } else if (result.role === 'admin') {
           router.push('/admin/dashboard');
+        } else if (result.role === 'student') {
+          router.push('/profile'); // Updated: Redirect students to their profile page
         } else {
-          router.push('/'); // Default for students and other roles
+          router.push('/'); // Default for any other roles
         }
       } else {
          // Fallback for unexpected result structure, though should be covered by types
