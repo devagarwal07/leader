@@ -39,28 +39,26 @@ export default function AdminDashboardPage() {
   }, []);
 
   useEffect(() => {
-    // Wait for auth to resolve
     if (authLoading) {
       console.log("[AdminDashboardPage Effect] Auth loading, returning.");
       return;
     }
 
-    // If no user, redirect to login
     if (!currentUser) {
       console.log("[AdminDashboardPage Effect] No current user, redirecting to login.");
       router.push('/login?redirect=/admin/dashboard');
       return;
     }
 
-    // User exists, check if admin. If not, redirect to home.
-    // isAdmin is derived from currentUser.role in AuthContext
     if (!isAdmin) {
-      console.log(`[AdminDashboardPage Effect] User is not admin (role: ${currentUser.role}), redirecting to home.`);
-      router.push('/');
+      console.log(`[AdminDashboardPage Effect] User is not admin (role: ${currentUser.role}), redirecting to home might be better or showing access denied.`);
+      // The rendering logic below will handle showing Access Denied if isAdmin is false.
+      // No need to redirect from here if we show a proper message.
+      // router.push('/');
       return;
     }
 
-    // User is admin, fetch requests for the current tab
+    // User is admin, fetch requests
     if (isAdmin) {
       console.log("[AdminDashboardPage Effect] User is admin, fetching requests.");
       fetchRequests(activeTab === 'all' ? undefined : activeTab);
@@ -74,7 +72,7 @@ export default function AdminDashboardPage() {
   };
 
   const handleActionComplete = () => {
-    if (isAdmin) { // Re-check isAdmin in case of role changes, though unlikely here
+    if (isAdmin) {
         fetchRequests(activeTab === 'all' ? undefined : activeTab);
     }
   };
@@ -88,9 +86,7 @@ export default function AdminDashboardPage() {
     );
   }
 
-  // After authLoading is false, determine content or "Access Denied"
   if (!currentUser) {
-     // This state should ideally be caught by useEffect redirect, but good as a fallback display.
      return (
         <div className="container mx-auto py-8 flex justify-center">
             <Card className="w-full max-w-md shadow-lg">
@@ -110,8 +106,7 @@ export default function AdminDashboardPage() {
     );
   }
 
-  // currentUser exists, now check their role for displaying content.
-  if (currentUser.role !== 'admin') {
+  if (!isAdmin) { // Direct check on isAdmin after authLoading
      return (
         <div className="container mx-auto py-8 flex justify-center">
             <Card className="w-full max-w-md shadow-lg">
@@ -132,13 +127,15 @@ export default function AdminDashboardPage() {
     );
   }
 
-  // Render Admin Dashboard Content (user is authenticated AND currentUser.role === 'admin')
+  // Render Admin Dashboard Content (user is authenticated AND isAdmin is true)
   return (
     <div className="space-y-6">
       <Card className="shadow-lg">
         <CardHeader>
           <CardTitle className="text-3xl">Admin Dashboard</CardTitle>
-          <CardDescription>Manage student point requests.</CardDescription>
+          <CardDescription>
+            Manage student point requests. {currentUser?.name ? `Welcome, ${currentUser.name}!` : ''}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={handleTabChange} className="w-full">
@@ -180,4 +177,3 @@ export default function AdminDashboardPage() {
     </div>
   );
 }
-
