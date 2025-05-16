@@ -15,7 +15,7 @@ export default function AdminDashboardPage() {
   const { currentUser, loading: authLoading, isAdmin } = useAuth();
   const router = useRouter();
   const [requests, setRequests] = useState<PointRequest[]>([]);
-  const [isLoadingTable, setIsLoadingTable] = useState(true); // Renamed to avoid conflict
+  const [isLoadingTable, setIsLoadingTable] = useState(true); 
   const [error, setError] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'pending' | 'approved' | 'rejected' | 'all'>("pending");
 
@@ -39,10 +39,8 @@ export default function AdminDashboardPage() {
   }, []);
 
   useEffect(() => {
-    // This effect handles redirection based on auth state.
-    // It only runs after authLoading is false.
     if (authLoading) {
-      return; // Wait until auth state is resolved by AuthContext
+      return; 
     }
 
     if (!currentUser) {
@@ -51,13 +49,12 @@ export default function AdminDashboardPage() {
     }
 
     if (currentUser && !isAdmin) {
-      router.push('/'); // Redirect non-admins to home page
+      // Not an admin, redirect to home. The component will render "Access Denied" before redirect.
+      // The access denied card below also handles this visually if redirection is slow.
+      router.push('/'); 
       return;
     }
 
-    // If execution reaches here, user is an admin. Fetch initial data.
-    // This check for isAdmin is somewhat redundant due to the component structure below,
-    // but harmless.
     if (isAdmin) {
         fetchRequests(activeTab === 'all' ? undefined : activeTab);
     }
@@ -67,30 +64,24 @@ export default function AdminDashboardPage() {
   const handleTabChange = (value: string) => {
     const tabValue = value as 'pending' | 'approved' | 'rejected' | 'all';
     setActiveTab(tabValue);
-    // fetchRequests is called within the main useEffect when activeTab changes and user is admin
   };
   
   const handleActionComplete = () => {
-    // Re-fetch requests for the current tab after an action.
-    // Ensure isAdmin is true before fetching, though page structure should guarantee this.
     if (isAdmin) {
         fetchRequests(activeTab === 'all' ? undefined : activeTab);
     }
   };
 
-  // 1. Handle Auth Loading State (covered by AuthContext's global loader, but good for clarity)
   if (authLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="ml-2">Loading authentication...</p>
+        <p className="ml-2">Verifying admin access...</p>
       </div>
     );
   }
 
-  // 2. Handle Access Denied State (after auth is resolved)
-  // If auth is resolved, and user is not an admin (or not logged in), show access denied.
-  // The useEffect above should have redirected, but this is a safeguard for the rendered content.
+  // After authLoading is false, if user is not an admin (or not logged in at all)
   if (!currentUser || !isAdmin) {
      return (
         <div className="container mx-auto py-8 flex justify-center">
@@ -102,14 +93,17 @@ export default function AdminDashboardPage() {
                 </CardHeader>
                 <CardContent>
                     <p className="text-muted-foreground">You do not have permission to view this page. Please ensure you are logged in with an administrator account.</p>
-                    <p className="text-xs mt-2 text-muted-foreground">If you are an admin, please check your user role in the database.</p>
+                    <p className="text-xs mt-2 text-muted-foreground">
+                      If you believe you are an admin, please ensure your user account in the database has the 'role' field correctly set to 'admin'.
+                      Check the browser's developer console for more detailed authentication logs from AuthContext.
+                    </p>
                 </CardContent>
             </Card>
         </div>
     );
   }
 
-  // 3. Render Admin Dashboard Content (if user is authenticated and is an admin)
+  // Render Admin Dashboard Content (if user is authenticated and is an admin)
   return (
     <div className="space-y-6">
       <Card className="shadow-lg">
@@ -136,9 +130,6 @@ export default function AdminDashboardPage() {
                     <p className="text-destructive">Error fetching requests: {error}</p>
                 </div>
             ) : (
-                // Ensure TabsContent always has a valid value from activeTab
-                // The dummy TabsContent are for when data for other tabs might not be loaded yet.
-                // We only need to render the content for the activeTab.
                 <>
                   <TabsContent value="pending" className={activeTab === 'pending' ? 'mt-0' : 'hidden'}>
                      <PointRequestsTable requests={requests} onActionComplete={handleActionComplete} />

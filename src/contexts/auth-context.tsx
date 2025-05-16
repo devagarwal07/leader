@@ -24,44 +24,66 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [loading, setLoading] = useState(true); // Start in loading state
 
   useEffect(() => {
+    console.log('[AuthContext] Initializing auth state listener...');
     const unsubscribeAuth = auth.onAuthStateChanged(async (fbUser) => {
       setFirebaseUser(fbUser);
       if (fbUser) {
+        console.log(`[AuthContext] Firebase auth state changed. User UID: ${fbUser.uid}`);
         const userDocRef = doc(db, "users", fbUser.uid);
         
         const unsubscribeSnapshot = onSnapshot(userDocRef, (docSnap) => {
           if (docSnap.exists()) {
             const userData = docSnap.data() as User;
-            setCurrentUser({
-              uid: fbUser.uid,
-              email: fbUser.email,
-              name: userData.name || fbUser.displayName,
-              role: userData.role,
-            });
+            console.log('[AuthContext] User document found:', JSON.stringify(userData));
+            
+            if (!userData.role) {
+                console.warn(`[AuthContext] User document for UID: ${fbUser.uid} is MISSING the 'role' field. Access will likely be denied for role-specific pages.`);
+                setCurrentUser({
+                    uid: fbUser.uid,
+                    email: fbUser.email,
+                    name: userData.name || fbUser.displayName,
+                    role: null, // Explicitly set role to null if missing
+                });
+            } else {
+                setCurrentUser({
+                    uid: fbUser.uid,
+                    email: fbUser.email,
+                    name: userData.name || fbUser.displayName,
+                    role: userData.role,
+                });
+                console.log(`[AuthContext] User role set to: "${userData.role}" for UID: ${fbUser.uid}`);
+            }
           } else {
             setCurrentUser(null); 
-            console.warn(`User document not found for UID: ${fbUser.uid}. User may need to complete profile or data is missing.`);
-            // Potentially sign out the user if their Firestore record is essential for app function
-            // import { signOut } from 'firebase/auth';
-            // signOut(auth);
+            console.warn(`[AuthContext] User document NOT FOUND in Firestore for UID: ${fbUser.uid}. User might need to complete profile or data is missing. CurrentUser set to null.`);
           }
-          setLoading(false); // Firestore data processed (or determined missing)
+          setLoading(false); 
+          console.log('[AuthContext] Firestore data processed. Loading set to false.');
         }, (error) => {
-          console.error("Error fetching user document:", error);
+          console.error("[AuthContext] Error fetching user document from Firestore:", error);
           setCurrentUser(null);
-          setLoading(false); // Error in Firestore fetch
+          setLoading(false);
+          console.log('[AuthContext] Error during Firestore fetch. Loading set to false.');
         });
         
-        return () => unsubscribeSnapshot();
+        return () => {
+          console.log(`[AuthContext] Unsubscribing Firestore snapshot listener for UID: ${fbUser.uid}`);
+          unsubscribeSnapshot();
+        }
 
       } else {
         // User is signed out
+        console.log('[AuthContext] Firebase auth state changed. No user signed in.');
         setCurrentUser(null);
-        setLoading(false); // Auth state resolved, no user
+        setLoading(false);
+        console.log('[AuthContext] No user. Loading set to false.');
       }
     });
 
-    return () => unsubscribeAuth();
+    return () => {
+      console.log('[AuthContext] Unsubscribing Firebase auth state listener.');
+      unsubscribeAuth();
+    }
   }, []);
 
   const isAdmin = currentUser?.role === 'admin';
@@ -72,6 +94,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return (
       <div className="flex h-screen w-screen items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
+        <p className="ml-3 text-lg">Loading user session...</p>
       </div>
     );
   }
