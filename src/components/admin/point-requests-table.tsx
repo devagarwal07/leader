@@ -32,6 +32,12 @@ import * as z from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { approvePointRequestAction, rejectPointRequestAction } from '@/lib/auth-actions';
 import { useToast } from '@/hooks/use-toast';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip"; // Corrected imports
 
 interface PointRequestsTableProps {
   requests: PointRequest[];
@@ -121,7 +127,7 @@ export function PointRequestsTable({ requests, onActionComplete }: PointRequests
   };
 
   if (requests.length === 0) {
-    return <p className="text-center text-muted-foreground py-4">No point requests found.</p>;
+    return <p className="text-center text-muted-foreground py-4">No point requests found for this filter.</p>;
   }
 
   return (
@@ -145,7 +151,7 @@ export function PointRequestsTable({ requests, onActionComplete }: PointRequests
                 <TableCell className="max-w-xs truncate">{request.reason}</TableCell>
                 <TableCell>{request.requestedAt ? format(parseISO(request.requestedAt as string), 'PPpp') : 'N/A'}</TableCell>
                 <TableCell>{getStatusBadge(request.status)}</TableCell>
-                <TableCell className="text-right">{request.pointsAwarded ?? (request.status === 'pending' ? '-' : 'N/A')}</TableCell>
+                <TableCell className="text-right">{request.pointsAwarded ?? (request.status === 'pending' ? '-' : (request.status === 'rejected' ? '0' : 'N/A'))}</TableCell>
                 <TableCell className="text-center">
                   {request.status === 'pending' && (
                     <div className="flex gap-2 justify-center">
@@ -165,7 +171,7 @@ export function PointRequestsTable({ requests, onActionComplete }: PointRequests
                                     <MessageSquare className="h-4 w-4" />
                                 </Button>
                             </TooltipTrigger>
-                            <TooltipContent>
+                            <TooltipContent side="left">
                                 <p className="text-sm"><strong>Admin Notes:</strong> {request.adminNotes}</p>
                                 {request.reviewedAt && <p className="text-xs text-muted-foreground">Reviewed: {format(parseISO(request.reviewedAt as string), 'PPpp')}</p>}
                             </TooltipContent>
@@ -231,11 +237,3 @@ export function PointRequestsTable({ requests, onActionComplete }: PointRequests
     </>
   );
 }
-
-// Minimal TooltipProvider and Tooltip components if not globally available or for simplicity
-// In a real app, these would likely come from a shared UI library like ShadCN
-const TooltipProvider = ({ children }: { children: React.ReactNode }) => <>{children}</>; // Placeholder
-const Tooltip = ({ children }: { children: React.ReactNode }) => <>{children}</>; // Placeholder
-const TooltipTrigger = ({ children, asChild }: { children: React.ReactNode, asChild?:boolean }) => <>{children}</>; // Placeholder
-const TooltipContent = ({ children }: { children: React.ReactNode }) => <div className="hidden group-hover:block absolute bg-black text-white p-1 rounded text-xs">{children}</div>; // Placeholder
-
