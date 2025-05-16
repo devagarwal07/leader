@@ -1,7 +1,10 @@
+
 import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { AppLayout } from '@/components/layout/app-layout';
+import { AuthProvider } from '@/contexts/auth-context'; // Added AuthProvider
+import { Toaster } from "@/components/ui/toaster"; // Moved Toaster here for global access
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -26,9 +29,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
-        <AppLayout>
-          {children}
-        </AppLayout>
+        <AuthProvider> {/* Wrapped with AuthProvider */}
+          <AppLayout>
+            {children}
+          </AppLayout>
+          <Toaster /> {/* Global Toaster */}
+        </AuthProvider>
       </body>
     </html>
   );
