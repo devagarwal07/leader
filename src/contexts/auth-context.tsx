@@ -21,17 +21,14 @@ const AuthContext = createContext<AuthContextType | undefined>(undefined);
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(true); // Start in loading state
 
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async (fbUser) => {
       setFirebaseUser(fbUser);
       if (fbUser) {
-        // User is signed in, see docs for a list of available properties
-        // https://firebase.google.com/docs/reference/js/firebase.User
         const userDocRef = doc(db, "users", fbUser.uid);
         
-        // Listen for real-time updates to user document
         const unsubscribeSnapshot = onSnapshot(userDocRef, (docSnap) => {
           if (docSnap.exists()) {
             const userData = docSnap.data() as User;
@@ -42,35 +39,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
               role: userData.role,
             });
           } else {
-            // User doc doesn't exist, might be initial signup phase or error
             setCurrentUser(null); 
-            console.log("No such user document!");
+            console.warn(`User document not found for UID: ${fbUser.uid}. User may need to complete profile or data is missing.`);
+            // Potentially sign out the user if their Firestore record is essential for app function
+            // import { signOut } from 'firebase/auth';
+            // signOut(auth);
           }
-          setLoading(false);
+          setLoading(false); // Firestore data processed (or determined missing)
         }, (error) => {
           console.error("Error fetching user document:", error);
           setCurrentUser(null);
-          setLoading(false);
+          setLoading(false); // Error in Firestore fetch
         });
         
-        return () => unsubscribeSnapshot(); // Cleanup snapshot listener on auth state change
+        return () => unsubscribeSnapshot();
 
       } else {
         // User is signed out
         setCurrentUser(null);
-        setLoading(false);
+        setLoading(false); // Auth state resolved, no user
       }
     });
 
-    return () => unsubscribeAuth(); // Cleanup auth listener on component unmount
+    return () => unsubscribeAuth();
   }, []);
 
   const isAdmin = currentUser?.role === 'admin';
   const isStudent = currentUser?.role === 'student';
 
+  // Show a global loader while authentication and user data fetching is in progress.
   if (loading) {
     return (
-      <div className="flex h-screen w-screen items-center justify-center">
+      <div className="flex h-screen w-screen items-center justify-center bg-background">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
       </div>
     );
