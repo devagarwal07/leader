@@ -11,7 +11,7 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Loader2, LogIn } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { loginAction } from '@/lib/auth-actions';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation'; // Added useSearchParams
 import Link from 'next/link';
 
 const formSchema = z.object({
@@ -24,6 +24,7 @@ type FormData = z.infer<typeof formSchema>;
 export function LoginForm() {
   const { toast } = useToast();
   const router = useRouter();
+  const searchParams = useSearchParams(); // For reading redirect query param
 
   const form = useForm<FormData>({
     resolver: zodResolver(formSchema),
@@ -44,18 +45,34 @@ export function LoginForm() {
           description: result.error,
           variant: "destructive",
         });
-      } else {
+      } else if (result.success && result.userId && result.role) { // Check for role
         toast({
           title: "Login Successful",
           description: "Welcome back!",
         });
-        router.push('/'); // Redirect to dashboard or home
+        
+        const redirectUrl = searchParams.get('redirect');
+        
+        if (redirectUrl) {
+          router.push(redirectUrl);
+        } else if (result.role === 'admin') {
+          router.push('/admin/dashboard');
+        } else {
+          router.push('/'); // Default for students and other roles
+        }
+      } else {
+         // Fallback for unexpected result structure, though should be covered by types
+         toast({
+          title: "Login Incomplete",
+          description: "Could not process login fully. Please try again.",
+          variant: "destructive",
+        });
       }
     } catch (error) {
       console.error("Login error:", error);
       toast({
         title: "Error",
-        description: "An unexpected error occurred. Please try again.",
+        description: "An unexpected error occurred during login. Please try again.",
         variant: "destructive",
       });
     }

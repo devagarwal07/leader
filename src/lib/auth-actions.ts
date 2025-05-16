@@ -3,7 +3,7 @@
 
 import { auth, db } from '@/lib/firebase';
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from 'firebase/auth';
-import { doc, setDoc, collection, addDoc, serverTimestamp, getDocs, query, where, updateDoc, Timestamp } from 'firebase/firestore';
+import { doc, setDoc, collection, addDoc, serverTimestamp, getDocs, query, where, updateDoc, Timestamp, getDoc } from 'firebase/firestore';
 import type { User, PointRequest } from './types';
 import { z } from 'zod';
 
@@ -27,7 +27,13 @@ export async function signupAction(data: SignupInput) {
     const { name, email, password, role, adminCode } = validation.data;
 
     if (role === 'admin') {
-      if (adminCode !== process.env.ADMIN_SIGNUP_CODE) {
+      // Ensure ADMIN_SIGNUP_CODE is accessed correctly
+      const correctAdminCode = process.env.ADMIN_SIGNUP_CODE;
+      if (!correctAdminCode) {
+        console.error("ADMIN_SIGNUP_CODE is not set in .env file.");
+        return { error: 'Admin signup is currently disabled. Configuration error.' };
+      }
+      if (adminCode !== correctAdminCode) {
         return { error: 'Invalid admin code.' };
       }
     }
@@ -46,6 +52,9 @@ export async function signupAction(data: SignupInput) {
 
     return { success: true, userId: user.uid };
   } catch (error: any) {
+    if (error.code === 'auth/email-already-in-use') {
+      return { error: 'This email address is already in use. Please try logging in or use a different email.' };
+    }
     return { error: error.message || 'Signup failed. Please try again.' };
   }
 }
@@ -57,7 +66,19 @@ const LoginSchema = z.object({
 });
 type LoginInput = z.infer<typeof LoginSchema>;
 
-export async function loginAction(data: LoginInput) {
+interface LoginSuccessResult {
+  success: true;
+  userId: string;
+  role: User['role'];
+}
+interface LoginErrorResult {
+  success?: false; // Explicitly false or undefined for error
+  error: string;
+}
+type LoginResult = LoginSuccessResult | LoginErrorResult;
+
+
+export async function loginAction(data: LoginInput): Promise<LoginResult> {
   try {
     const validation = LoginSchema.safeParse(data);
     if (!validation.success) {
@@ -65,8 +86,30 @@ export async function loginAction(data: LoginInput) {
     }
     const { email, password } = validation.data;
     const userCredential = await signInWithEmailAndPassword(auth, email, password);
-    return { success: true, userId: userCredential.user.uid };
+    const firebaseAuthUser = userCredential.user;
+
+    // Fetch user role from Firestore
+    const userDocRef = doc(db, "users", firebaseAuthUser.uid);
+    const userDocSnap = await getDoc(userDocRef);
+
+    if (!userDocSnap.exists()) {
+      // This case should ideally not happen if signup guarantees Firestore doc creation.
+      // If it does, it means there's an inconsistency.
+      await signOut(auth); // Sign out the user as their profile is incomplete
+      return { error: 'User profile not found. Please contact support or try signing up again.' };
+    }
+
+    const userData = userDocSnap.data() as User;
+    if (!userData.role) {
+        await signOut(auth);
+        return { error: 'User role not defined. Please contact support.' };
+    }
+
+    return { success: true, userId: firebaseAuthUser.uid, role: userData.role };
   } catch (error: any) {
+    if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
+        return { error: 'Invalid email or password. Please try again.' };
+    }
     return { error: error.message || 'Login failed. Please check your credentials.' };
   }
 }
@@ -97,12 +140,12 @@ export async function requestPointsAction(data: RequestPointsInput) {
     }
     const { reason, userId, studentName } = validation.data;
 
-    const newRequest: Omit<PointRequest, 'id'> = {
+    const newRequest: Omit<PointRequest, 'id' | 'requestedAt'> & { requestedAt: any } = { // Ensure requestedAt type matches serverTimestamp()
       userId,
       studentName,
       reason,
       status: 'pending',
-      requestedAt: serverTimestamp(),
+      requestedAt: serverTimestamp(), // This will be converted to Timestamp by Firestore
     };
     const docRef = await addDoc(collection(db, "pointRequests"), newRequest);
     return { success: true, requestId: docRef.id };
@@ -123,15 +166,18 @@ export async function getPointRequestsAction(status?: 'pending' | 'approved' | '
       q = query(requestsRef);
     }
     const querySnapshot = await getDocs(q);
-    const requests = querySnapshot.docs.map(doc => ({ 
-        id: doc.id, 
-        ...doc.data(),
-        // Ensure Timestamps are converted if needed, or handle on client
-        requestedAt: doc.data().requestedAt instanceof Timestamp ? doc.data().requestedAt.toDate().toISOString() : doc.data().requestedAt,
-        reviewedAt: doc.data().reviewedAt instanceof Timestamp ? doc.data().reviewedAt.toDate().toISOString() : doc.data().reviewedAt,
-    })) as PointRequest[];
+    const requests = querySnapshot.docs.map(doc => {
+        const data = doc.data();
+        return { 
+            id: doc.id, 
+            ...data,
+            requestedAt: data.requestedAt instanceof Timestamp ? data.requestedAt.toDate().toISOString() : (data.requestedAt ? new Date(data.requestedAt.seconds * 1000).toISOString() : null),
+            reviewedAt: data.reviewedAt instanceof Timestamp ? data.reviewedAt.toDate().toISOString() : (data.reviewedAt ? new Date(data.reviewedAt.seconds * 1000).toISOString() : null),
+        } as PointRequest;
+    });
     return { requests };
   } catch (error: any) {
+    console.error("Error in getPointRequestsAction:", error);
     return { error: error.message || 'Failed to fetch point requests.' };
   }
 }
@@ -139,7 +185,7 @@ export async function getPointRequestsAction(status?: 'pending' | 'approved' | '
 // Admin: Approve Point Request Action
 const ApproveRequestSchema = z.object({
   requestId: z.string(),
-  pointsAwarded: z.number().min(1, "Points must be at least 1."),
+  pointsAwarded: z.coerce.number().min(1, "Points must be at least 1."),
   adminNotes: z.string().optional(),
 });
 type ApproveRequestInput = z.infer<typeof ApproveRequestSchema>;
@@ -159,11 +205,13 @@ export async function approvePointRequestAction(data: ApproveRequestInput) {
       adminNotes: adminNotes || "",
       reviewedAt: serverTimestamp(),
     });
-    // Note: This action currently does NOT update the student's main point total or accomplishments.
-    // That would require fetching the student document and updating it, potentially creating a new accomplishment.
-    // This can be added as a next step.
+    // TODO: Add logic here to find the student's user document by `userId` from the pointRequest,
+    // then add an accomplishment to their `accomplishments` subcollection or array,
+    // and update their `totalPoints`. This requires fetching the original request to get userId.
     return { success: true };
-  } catch (error: any) {
+  } catch (error: any)
+ {
+    console.error("Error in approvePointRequestAction:", error);
     return { error: error.message || 'Failed to approve point request.' };
   }
 }
@@ -190,6 +238,7 @@ export async function rejectPointRequestAction(data: RejectRequestInput) {
     });
     return { success: true };
   } catch (error: any) {
+    console.error("Error in rejectPointRequestAction:", error);
     return { error: error.message || 'Failed to reject point request.' };
   }
 }
